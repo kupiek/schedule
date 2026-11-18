@@ -1,0 +1,66 @@
+name: Refresh schedule and deploy PWA
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '13 */2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: 'iek-pages'
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Get college schedule
+        run: |
+          if ! python scripts/sync_schedule.py; then
+            echo '::warning::Source API is temporarily unavailable. Publishing the last available snapshot.'
+          fi
+
+      - name: Save snapshot back to repository
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/schedule.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'data: update IEK schedule snapshot'
+            git push
+          fi
+
+      - name: Assemble static site
+        run: |
+          mkdir -p _site
+          cp index.html styles.css app.js data-model.mjs manifest.webmanifest service-worker.js _site/
+          cp -R assets data _site/
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
