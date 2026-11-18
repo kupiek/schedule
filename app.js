@@ -1,7 +1,8 @@
 import {
-  DAYS, SHORT_DAYS, DEFAULT_TEACHER_ID, normalizeRoom, splitRooms, normalizeName,
+  DAYS, DEFAULT_TEACHER_ID, normalizeRoom, splitRooms, normalizeName,
   teacherDisplayName, groupName, iekDateParts, currentParity, scheduleForWeek,
-  allRooms, roomLessons, availableRooms, teacherSchedule, groupSchedule, groupDictionary
+  allRooms, roomLessons, availableRooms, teacherSchedule, groupSchedule, groupDictionary,
+  buildWeekBoard
 } from './data-model.mjs';
 
 const app = document.querySelector('#app');
@@ -9,7 +10,7 @@ const statusBar = document.querySelector('#app-status');
 const toastElement = document.querySelector('#toast');
 const state = {
   data: null, view: 'mine', tab: 'groups', detail: null,
-  mineDay: 'today', week: null, search: '',
+  search: '', inspected: null, displayedLessons: [], displayContext: '',
   freeDay: 1, freePair: 2, corpus: '',
   teacherId: readSavedTeacher(), installEvent: null
 };
@@ -82,7 +83,6 @@ async function loadData(silent = false) {
     }
     const previousTimestamp = state.data?.generatedAt;
     state.data = data;
-    if (state.week === null) state.week = currentParity(data);
     updateStatus();
     render();
     if (silent) showToast(previousTimestamp === data.generatedAt ? 'Новых данных пока нет' : 'Расписание обновлено');
@@ -101,14 +101,6 @@ function currentTeacherName() {
 function currentLabel() {
   const now = currentParity(state.data);
   return now === null ? 'Чётность неизвестна' : now === 0 ? 'Сейчас чётная неделя' : 'Сейчас нечётная неделя';
-}
-
-function weekToggle() {
-  const now = currentParity(state.data);
-  return `<div class="switch" role="group" aria-label="Выбор чётности недели">
-    <button data-action="week" data-value="0" aria-pressed="${state.week === 0}">Чётная</button>
-    <button data-action="week" data-value="1" aria-pressed="${state.week === 1}">Нечётная</button>
-  </div><span class="toolbar-sub">${esc(currentLabel())}${state.week === null ? ' · отображаются оба варианта' : ''}</span>`;
 }
 
 function groupTitle(groupId) {
@@ -136,20 +128,66 @@ function lessonCard(item, context) {
     </div></article>`;
 }
 
-function schedulePanels(lessons, context, options = {}) {
+const PAIR_TIMES = [
+  ['08:30–10:00','10:20–11:50','12:30–14:00','14:10–15:40'],
+  ['08:30–10:00','10:20–11:50','12:30–14:00','14:10–15:40'],
+  ['08:30–10:00','10:20–11:50','12:30–14:00','14:10–15:40'],
+  ['08:30–10:00','10:20–11:50','12:30–14:00','14:10–15:40'],
+  ['08:30–10:00','10:20–11:50','12:30–14:00','14:10–15:40'],
+  ['08:30–10:00','10:10–11:40','12:10–13:40','13:50–15:20']
+];
+
+function dateForWeekDay(day) {
+  const current = iekDateParts();
+  const date = new Date(Date.UTC(current.year, current.month - 1, current.day + day - current.weekday));
+  return new Intl.DateTimeFormat('ru-RU',{timeZone:'UTC',day:'numeric',month:'short',year:'2-digit'}).format(date);
+}
+
+function timetableEntry(item, context, split, day, pair) {
+  const label = context === 'group' ? item.teacher || 'Преподаватель не указан' : groupTitle(item.groupId);
+  const subject = item.subject || item.edit?.subject || 'Занятие';
+  const room = splitRooms(item.room).join(' / ') || '—';
+  const tag = item.typeWeek === 0 ? 'чёт.' : item.typeWeek === 1 ? 'нечёт.' : '';
+  const caption = `${DAYS[day-1]}, ${pair}-я пара. ${label}. ${subject}. ${room}. ${tag}`;
+  return `<button class="timetable-entry ${item.active ? 'entry-active' : 'entry-inactive'}" type="button"
+    data-action="inspect-slot" data-day="${day}" data-pair="${pair}" title="${esc(caption)}" aria-label="${esc(caption)}">
+      <span class="entry-person">${esc(label)}</span>
+      <span class="entry-subject">${esc(subject)}</span>
+      <span class="entry-room">${item.edit?.room && normalizeRoom(item.edit.room) !== normalizeRoom(item.room) ? '<span class="room-change" title="В API есть запись об изменении аудитории">✦</span>' : ''}${esc(room)}</span>
+      ${tag ? `<span class="entry-week-tag ${split ? 'is-split' : ''}">${tag}</span>` : ''}
+    </button>`;
+}
+
+function schedulePanels(lessons, context) {
   const today = iekDateParts().weekday;
-  const filtered = scheduleForWeek(lessons, state.week);
-  const days = options.onlyDay ? [Number(options.onlyDay)] : [1,2,3,4,5,6];
-  return `<div class="grid-main ${options.onlyDay ? '' : 'week-view'}">
-    ${days.map(day => {
-      const own = filtered.filter(x => x.day === day);
-      const isToday = today === day;
-      return `<section class="panel day-panel ${isToday ? 'is-today' : ''}" id="day-${day}">
-        <div class="day-panel-title"><div><h3>${esc(DAYS[day-1])}</h3><small>${own.length} ${pairWord(own.length)}</small></div>${isToday ? '<span class="badge today">Сегодня</span>' : ''}</div>
-        ${own.length ? `<div class="lesson-list">${own.map(item => lessonCard(item,context)).join('')}</div>` : `<div class="empty-state">${icons.empty}<strong>Занятий нет</strong><p>На выбранную неделю расписание не заполнено.</p></div>`}
-      </section>`;
-    }).join('')}
+  const board = buildWeekBoard(lessons, currentParity(state.data));
+  state.displayedLessons = lessons;
+  state.displayContext = context;
+  const renderDay = ({day,rows,extra}) => `<section class="timetable-day ${day === today ? 'timetable-today' : ''}" id="day-${day}">
+    <div class="timetable-day-heading"><span class="timetable-dot"></span><h3>${DAYS[day-1]}</h3><span class="timetable-date">${esc(dateForWeekDay(day))}</span>${day === today ? '<span class="timetable-today-label">Сегодня</span>' : ''}</div>
+    <div class="timetable-table">${rows.map(({pair,entries}) => {
+      const split = entries.length > 1;
+      return `<div class="timetable-row ${entries.some(item => item.active) ? 'has-current' : ''}">
+        <div class="pair-column"><strong>${pair} пара</strong><span>${PAIR_TIMES[day-1][pair-1]}</span></div>
+        <div class="timetable-cell ${split ? 'is-divided' : ''}">
+          ${entries.length ? entries.map(item => timetableEntry(item,context,split,day,pair)).join('') : '<span class="slot-blank" aria-label="Нет занятий"></span>'}
+        </div></div>`;
+    }).join('')}</div>
+    ${extra.length ? `<div class="extra-note">В расписании также есть ${extra.length} ${pairWord(extra.length)} после 4-й пары. Они доступны в исходных данных, но не входят в сетку из четырёх строк.</div>` : ''}
+  </section>`;
+  return `<div class="timetable-board" aria-label="Расписание на шесть дней: понедельник–среда слева, четверг–суббота справа">
+    <div class="timetable-column">${board.slice(0,3).map(renderDay).join('')}</div>
+    <div class="timetable-column">${board.slice(3).map(renderDay).join('')}</div>
   </div>`;
+}
+
+function renderSlotDialog() {
+  if (!state.inspected) return '';
+  const {day,pair,context,entries} = state.inspected;
+  return `<div class="slot-overlay" data-action="close-slot"><section class="slot-dialog" role="dialog" aria-modal="true" aria-label="Занятия на ${pair}-й паре">
+    <div class="slot-dialog-heading"><div><div class="eyebrow">${esc(DAYS[day-1])} · ${pair}-я пара</div><h2>Сведения о занятии</h2></div><button type="button" class="icon-button" data-action="close-slot" aria-label="Закрыть">×</button></div>
+    <div class="slot-dialog-lessons">${entries.map(item => `<div class="slot-dialog-variant ${item.active ? '' : 'is-inactive'}">${item.typeWeek === null ? '<span class="badge">Каждую неделю</span>' : `<span class="badge">${item.typeWeek === 0 ? 'Чётная неделя' : 'Нечётная неделя'}${item.active ? ' · сейчас' : ' · не сейчас'}</span>`}${lessonCard(item,context)}</div>`).join('')}</div>
+  </section></div>`;
 }
 
 function pairWord(n) {
@@ -158,29 +196,12 @@ function pairWord(n) {
 }
 
 function renderMine() {
-  const today = iekDateParts().weekday;
   const lessons = teacherSchedule(state.data, state.teacherId);
-  const filtered = scheduleForWeek(lessons, state.week);
-  const currentDay = today === 7 ? 1 : today;
-  const onlyDay = state.mineDay === 'all' ? null : state.mineDay === 'today' ? currentDay : Number(state.mineDay);
-  return `<section class="hero"><div class="hero-content">
-    <div class="eyebrow">Личное расписание</div>
-    <h1>${esc(currentTeacherName())}</h1>
-    <p class="subhead">Ваши занятия на неделю. Сегодняшний день отмечен отдельно.</p>
-    <div class="hero-meta"><span class="pill fresh">${filtered.length} ${pairWord(filtered.length)} в неделю</span><span class="pill">${esc(currentLabel())}</span></div>
-  </div></section>
-  <div class="toolbar">${weekToggle()}</div>
-  <div class="section-intro"><h2>Занятия</h2><button class="subtle-action" data-action="mine-all">${state.mineDay === 'all' ? 'Показать день' : 'Вся неделя'}</button></div>
-  <div class="day-strip" role="group" aria-label="Дни недели">
-    ${DAYS.map((day,i) => {
-      const number = i+1;
-      const active = onlyDay === number;
-      const count = filtered.filter(x => x.day === number).length;
-      return `<button class="day-chip ${number === today ? 'is-today' : ''} ${active ? 'active' : ''}" data-action="mine-day" data-value="${number}" aria-pressed="${active}"><span>${SHORT_DAYS[i]}${number === today ? ' · сегодня' : ''}</span><b>${count} ${pairWord(count)}</b></button>`;
-    }).join('')}
-  </div>
-  ${state.mineDay === 'all' ? schedulePanels(lessons,'teacher') : schedulePanels(lessons,'teacher',{onlyDay})}
-  <p class="subhead" style="font-size:12px;margin-top:18px">Расписание отражает недельный шаблон. Номер пары указан без времени начала: API не предоставляет часы занятий.</p>`;
+  return `<section class="compact-intro"><div><div class="eyebrow">Моё расписание · вся неделя</div><h1>${esc(currentTeacherName())}</h1></div>
+    <div class="current-week"><span class="week-indicator"></span>${esc(currentLabel())}</div>
+  </section>
+  ${schedulePanels(lessons,'teacher')}
+  <p class="board-footnote">Занятия другой чётности показаны приглушённым цветом. Нажмите на занятие, чтобы увидеть полные сведения. Время пар задано по референсу и не поступает из API.</p>`;
 }
 
 const CATEGORY_ITEMS = [
@@ -238,7 +259,7 @@ function renderFreeRooms() {
   const corpuses = [...new Set(rooms.map(room => room.match(/^\d+К/u)?.[0]).filter(Boolean))].sort();
   const allPairs = state.data.groupLessons.map(x => Number(x.pair) || 0);
   const maxPair = Math.max(4, ...allPairs);
-  const selected = availableRooms(state.data,{day:state.freeDay,pair:state.freePair,parity:state.week,corpus:state.corpus});
+  const selected = availableRooms(state.data,{day:state.freeDay,pair:state.freePair,parity:currentParity(state.data),corpus:state.corpus});
   const groupErrors = Number(state.data.meta?.groupErrors || 0);
   return `<div class="page-card"><h2>Свободные кабинеты</h2><p class="subhead">Поиск помещений, в которых нет запланированных занятий на выбранную пару.</p>
     <div class="filters" style="margin-top:20px">
@@ -246,7 +267,7 @@ function renderFreeRooms() {
       <label><span class="field-label">Номер пары</span><select class="select" id="free-pair">${selectionOptions(Array.from({length:maxPair},(_,i)=>({value:i+1,label:`${i+1}-я пара`})),state.freePair)}</select></label>
       <label class="filter-wide"><span class="field-label">Корпус</span><select class="select" id="free-corpus">${selectionOptions([{value:'',label:'Все корпуса'},...corpuses.map(name=>({value:name,label:name}))],state.corpus)}</select></label>
     </div>
-    <div class="toolbar">${weekToggle()}</div>
+    <div class="notice info">${esc(currentLabel())}. Свободные кабинеты определяются автоматически для текущей чётности.</div>
     <div class="notice">В списке только кабинеты, встречающиеся в API. Отсутствие занятия не гарантирует фактическую доступность помещения.${groupErrors ? ` Не удалось обновить расписание ${groupErrors} групп: результат может быть неполным.` : ''}</div>
     <div class="section-intro"><h3>Подходящие аудитории</h3><span class="badge free">${selected.length} найдено</span></div>
     ${selected.length ? `<div class="room-grid">${selected.map(room=>`<button class="room-card" data-action="open-room" data-value="${esc(room)}"><strong>${esc(room)}</strong><span>Посмотреть расписание →</span></button>`).join('')}</div>` : `<div class="empty-state">${icons.empty}<strong>Свободных кабинетов не найдено</strong><p>Попробуйте другую пару, день или корпус.</p></div>`}
@@ -274,7 +295,7 @@ function renderDetail() {
   }
   return `<button class="detail-back" data-action="back">${icons.back} Вернуться к списку</button>
     <div class="detail-heading"><div class="eyebrow">${esc(subtitle)}</div><h1>${esc(title)}</h1></div>
-    <div class="toolbar">${weekToggle()}</div>
+    <div class="toolbar-sub" style="margin-bottom:14px">${esc(currentLabel())} · занятия другой недели приглушены</div>
     ${detail.type === 'rooms' ? '<div class="notice info">Расписание кабинета вычислено по групповым расписаниям. При наличии изменений аудитории проверьте пометки у занятий.</div>' : ''}
     ${schedulePanels(lessons,context)}`;
 }
@@ -307,12 +328,13 @@ function render() {
     if (active) nav.setAttribute('aria-current','page'); else nav.removeAttribute('aria-current');
   }
   const firstSyncNote = state.data.initialized === false ? '<div class="notice">Данные ещё не загружены. Запустите workflow «Refresh schedule and deploy PWA» во вкладке Actions вашего репозитория GitHub.</div>' : '';
-  app.innerHTML = firstSyncNote + (state.view === 'mine' ? renderMine() : state.view === 'directory' ? renderDirectory() : renderSettings());
+  app.innerHTML = firstSyncNote + (state.view === 'mine' ? renderMine() : state.view === 'directory' ? renderDirectory() : renderSettings()) + renderSlotDialog();
 }
 
 document.querySelectorAll('.nav-item').forEach(nav => nav.addEventListener('click', () => {
   state.view = nav.dataset.view;
   state.detail = null;
+  state.inspected = null;
   state.search = '';
   if (state.view === 'directory') state.freeDay = iekDateParts().weekday === 7 ? 1 : iekDateParts().weekday;
   render();
@@ -323,11 +345,16 @@ app.addEventListener('click', async event => {
   const button = event.target.closest('[data-action]');
   if (!button) return;
   const action = button.dataset.action;
+  if (action === 'close-slot' && button.classList.contains('slot-overlay') && event.target !== button) return;
   const value = button.dataset.value;
   if (action === 'reload') return loadData(true);
-  if (action === 'week') state.week = Number(value);
-  if (action === 'mine-day') state.mineDay = value;
-  if (action === 'mine-all') state.mineDay = state.mineDay === 'all' ? 'today' : 'all';
+  if (action === 'inspect-slot') {
+    const day = Number(button.dataset.day);
+    const pair = Number(button.dataset.pair);
+    const entries = buildWeekBoard(state.displayedLessons,currentParity(state.data))[day-1].rows[pair-1].entries;
+    state.inspected = {day,pair,entries,context:state.displayContext};
+  }
+  if (action === 'close-slot') state.inspected = null;
   if (action === 'tab') {state.tab=value;state.detail=null;state.search='';}
   if (action === 'open-detail') state.detail = {type:state.tab,id:value};
   if (action === 'open-room') {state.tab='rooms';state.detail={type:'rooms',id:value};state.search='';}
@@ -340,6 +367,10 @@ app.addEventListener('click', async event => {
   }
   render();
   if (['tab','open-detail','open-room','back'].includes(action)) scrollTo({top:0,behavior:'instant'});
+});
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && state.inspected) { state.inspected = null; render(); }
 });
 
 app.addEventListener('input', event => {
@@ -367,6 +398,9 @@ document.querySelector('#reload-button').addEventListener('click',()=>loadData(t
 window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();state.installEvent=event;if(state.view==='settings')render();});
 window.addEventListener('appinstalled',()=>{state.installEvent=null;showToast('Приложение установлено');if(state.view==='settings')render();});
 window.addEventListener('online',()=>{if(state.data)loadData(true);});
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && state.data) { updateStatus(); render(); }
+});
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
 state.freeDay = iekDateParts().weekday === 7 ? 1 : iekDateParts().weekday;
 loadData();

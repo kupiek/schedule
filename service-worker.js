@@ -1,4 +1,4 @@
-const VERSION = 'iek-shell-v1';
+const VERSION = 'iek-shell-v2';
 const DATA_CACHE = 'iek-data-v1';
 const APP_ASSETS = [
   './', './index.html', './styles.css', './app.js', './data-model.mjs',
@@ -42,5 +42,16 @@ self.addEventListener('fetch', event => {
     event.respondWith(fetch(event.request).catch(() => caches.match('./index.html')));
     return;
   }
-  event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request)));
+  event.respondWith((async () => {
+    const cache = await caches.open(VERSION);
+    try {
+      const network = await fetch(event.request);
+      if (network.ok) await cache.put(event.request, network.clone());
+      return network;
+    } catch (error) {
+      const saved = await cache.match(event.request);
+      if (saved) return saved;
+      throw error;
+    }
+  })());
 });

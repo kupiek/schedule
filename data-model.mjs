@@ -80,6 +80,22 @@ export function scheduleForWeek(lessons, parity) {
     .sort((a,b) => a.day - b.day || a.pair - b.pair || String(a.subject).localeCompare(String(b.subject),'ru'));
 }
 
+// A fixed weekly board: six days, exactly four regular pair rows per day.
+// Keep both parity alternatives in the same row so inactive ones can be dimmed.
+export function buildWeekBoard(lessons, activeParity) {
+  const valid = scheduleForWeek(lessons, null);
+  return Array.from({length: 6}, (_, dayIndex) => ({
+    day: dayIndex + 1,
+    rows: Array.from({length: 4}, (_, pairIndex) => ({
+      pair: pairIndex + 1,
+      entries: valid.filter(item => item.day === dayIndex + 1 && item.pair === pairIndex + 1)
+        .map(item => ({...item, active: activeForWeek(item, activeParity)}))
+        .sort((a,b) => (a.typeWeek ?? -1) - (b.typeWeek ?? -1))
+    })),
+    extra: valid.filter(item => item.day === dayIndex + 1 && item.pair > 4)
+  }));
+}
+
 export function allRooms(data) {
   const found = new Set();
   for (const item of data?.groupLessons || []) {
