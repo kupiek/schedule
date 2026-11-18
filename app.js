@@ -117,6 +117,16 @@ function currentLabel() {
   return now === null ? 'Чётность неизвестна' : now === 0 ? 'Сейчас чётная неделя' : 'Сейчас нечётная неделя';
 }
 
+function weekIndicator() {
+  const parity = currentParity(state.data);
+  const stateClass = value => parity === value ? ' is-active' : '';
+  const current = value => parity === value ? ' aria-current="true"' : '';
+  return `<div class="week-indicator-card" role="status" aria-label="${esc(currentLabel())}">
+    <span class="week-type${stateClass(1)}"${current(1)}>Нечётная</span>
+    <span class="week-type${stateClass(0)}"${current(0)}>Чётная</span>
+  </div>`;
+}
+
 function groupTitle(groupId) {
   const group = groupDictionary(state.data).get(Number(groupId));
   const now = iekDateParts();
@@ -167,13 +177,12 @@ function timetableSlot(entries, context, day, pair) {
   const {common,even,odd,hasAlternatives} = splitPairVariants(entries);
   const itemHtml = items => items.map(item => timetableEntry(item,context,day,pair)).join('');
   if (!hasAlternatives) return `<div class="slot-common">${itemHtml(common)}</div>`;
-  const lane = (items,type,label) => `<div class="parity-lane ${items.some(item => item.active) ? 'lane-current' : 'lane-other'}" aria-label="${type}">
-    <span class="parity-chip">${label}</span>
+  const lane = (items,type) => `<div class="parity-lane ${items.some(item => item.active) ? 'lane-current' : 'lane-other'}" aria-label="${type}" title="${type}">
     ${items.length ? `<div class="parity-lane-items">${itemHtml(items)}</div>` : '<span class="parity-empty" aria-label="Нет занятия">—</span>'}
   </div>`;
   return `<div class="slot-parity-wrapper">
     ${common.length ? `<div class="slot-common slot-always">${itemHtml(common)}</div>` : ''}
-    <div class="slot-parity-pair">${lane(even,'Чётная неделя','Ч')}${lane(odd,'Нечётная неделя','Н')}</div>
+    <div class="slot-parity-pair">${lane(even,'Чётная неделя')}${lane(odd,'Нечётная неделя')}</div>
   </div>`;
 }
 
@@ -182,7 +191,7 @@ function schedulePanels(lessons, context) {
   const board = buildWeekBoard(lessons, currentParity(state.data));
   state.displayedLessons = lessons;
   state.displayContext = context;
-  const renderDay = ({day,rows,extra}) => `<section class="timetable-day ${day === today ? 'timetable-today' : ''}" id="day-${day}">
+  const renderDay = ({day,rows}) => `<section class="timetable-day ${day === today ? 'timetable-today' : ''}" id="day-${day}">
     <div class="timetable-day-heading"><span class="timetable-dot"></span><h3>${DAYS[day-1]}</h3><span class="timetable-date">${esc(dateForWeekDay(day))}</span>${day === today ? '<span class="timetable-today-label">Сегодня</span>' : ''}</div>
     <div class="timetable-table">${rows.map(({pair,entries}) => {
       return `<div class="timetable-row ${entries.some(item => item.active) ? 'has-current' : ''}">
@@ -191,12 +200,12 @@ function schedulePanels(lessons, context) {
           ${timetableSlot(entries,context,day,pair)}
         </div></div>`;
     }).join('')}</div>
-    ${extra.length ? `<div class="extra-note">В расписании также есть ${extra.length} ${pairWord(extra.length)} после 4-й пары. Они доступны в исходных данных, но не входят в сетку из четырёх строк.</div>` : ''}
   </section>`;
+  const extraNotes = board.filter(day => day.extra.length).map(day => `${DAYS[day.day-1]}: ещё ${day.extra.length} ${pairWord(day.extra.length)} после 4-й`).join(' · ');
   return `<div class="timetable-board" aria-label="Расписание на шесть дней: понедельник–среда слева, четверг–суббота справа">
     <div class="timetable-column">${board.slice(0,3).map(renderDay).join('')}</div>
     <div class="timetable-column">${board.slice(3).map(renderDay).join('')}</div>
-  </div>`;
+  </div>${extraNotes ? `<p class="extra-note">${esc(extraNotes)}. Эти занятия не входят в сетку из четырёх пар.</p>` : ''}`;
 }
 
 function renderSlotDialog() {
@@ -216,10 +225,10 @@ function pairWord(n) {
 function renderMine() {
   const lessons = teacherSchedule(state.data, state.teacherId);
   return `<section class="compact-intro"><div><div class="eyebrow">Моё расписание · вся неделя</div><h1>${esc(currentTeacherName())}</h1></div>
-    <div class="current-week"><span class="week-indicator"></span>${esc(currentLabel())}</div>
+    ${weekIndicator()}
   </section>
   ${schedulePanels(lessons,'teacher')}
-  <p class="board-footnote">Ч — чётная неделя, Н — нечётная. Вариант другой недели приглушён. Нажмите на занятие, чтобы увидеть полные сведения.</p>`;
+  <p class="board-footnote">Вариант текущей недели ярче, другой приглушён. Нажмите на занятие, чтобы увидеть полные сведения и чётность.</p>`;
 }
 
 const CATEGORY_ITEMS = [

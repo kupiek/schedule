@@ -105,8 +105,10 @@ h1,h2,h3,p{margin:0}h1{font-weight:780;font-size:clamp(27px,4vw,39px);line-heigh
 .compact-intro{display:flex;align-items:end;justify-content:space-between;gap:14px;margin:2px 0 15px;flex-wrap:wrap}
 .compact-intro h1{font-size:clamp(17px,2.4vw,27px);line-height:1.15}
 .compact-intro .eyebrow{margin-bottom:4px}
-.current-week{display:inline-flex;align-items:center;gap:7px;color:#b7c9e6;background:#152238;border:1px solid #2f4262;border-radius:11px;padding:7px 11px;font-size:12px;font-weight:650;white-space:nowrap}
-.week-indicator,.timetable-dot{width:8px;height:8px;flex:0 0 auto;border-radius:50%;background:#00e79e;box-shadow:0 0 12px rgba(0,231,158,.4)}
+.week-indicator-card{display:grid;grid-template-rows:repeat(2,minmax(0,1fr));gap:2px;padding:3px;background:#101c2f;border:1px solid #324762;border-radius:11px;min-width:113px;flex:0 0 auto}
+.week-type{display:block;color:#607694;font-size:10px;font-weight:790;text-align:center;line-height:1.25;padding:3px 10px;border:1px solid transparent;border-radius:7px;white-space:nowrap;transition:color .2s,background .2s,border-color .2s}
+.week-type.is-active{color:#c3ffe6;background:linear-gradient(90deg,#0e6650,#104b45);border-color:#128e6d;box-shadow:inset 3px 0 0 #11eda9}
+.timetable-dot{width:8px;height:8px;flex:0 0 auto;border-radius:50%;background:#00e79e;box-shadow:0 0 12px rgba(0,231,158,.4)}
 .timetable-board{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;align-items:start}
 .timetable-column{min-width:0;display:grid;gap:12px}
 .timetable-day{min-width:0}
@@ -164,7 +166,8 @@ h1,h2,h3,p{margin:0}h1{font-weight:780;font-size:clamp(27px,4vw,39px);line-heigh
   main{padding-top:9px}
   .compact-intro{margin:0 0 11px;gap:7px}
   .compact-intro h1{font-size:18px}.compact-intro .eyebrow{font-size:9px}
-  .current-week{font-size:10px;padding:5px 7px}
+  .week-indicator-card{min-width:97px;padding:2px;gap:2px}
+  .week-type{font-size:9px;padding:3px 7px}
   .timetable-board{gap:9px}
   .timetable-column{gap:7px}
   .timetable-day-heading{height:20px;gap:5px;margin-bottom:4px}
@@ -193,7 +196,7 @@ h1,h2,h3,p{margin:0}h1{font-weight:780;font-size:clamp(27px,4vw,39px);line-heigh
   .entry-person{font-size:8px}.entry-subject{font-size:7.5px}.entry-room{font-size:7.5px}
 }
 
-/* Pair numbers only; parity-dependent lessons occupy labeled half-cells. */
+/* Pair numbers only; alternating weeks share a single slot without letter tags. */
 .timetable-row{grid-template-columns:49px minmax(0,1fr)}
 .pair-column strong{font-size:15px;color:#7185a8}
 .timetable-row.has-current .pair-column strong{color:#0de6a1}
@@ -202,38 +205,39 @@ h1,h2,h3,p{margin:0}h1{font-weight:780;font-size:clamp(27px,4vw,39px);line-heigh
 .slot-parity-wrapper{display:flex;flex-direction:column;width:100%;min-width:0}
 .slot-always{border-bottom:1px solid #31405b}
 .slot-parity-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));min-width:0;flex:1}
-.parity-lane{display:grid;grid-template-columns:18px minmax(0,1fr);min-width:0;align-items:stretch;position:relative}
+.parity-lane{display:flex;min-width:0;align-items:stretch;position:relative}
 .parity-lane:first-child{border-right:1px solid #36465f}
-.parity-lane.lane-current{background:rgba(74,125,117,.045)}
+.parity-lane.lane-current{background:linear-gradient(90deg,rgba(19,167,126,.095),rgba(74,125,117,.035))}
 .parity-lane.lane-other{background:rgba(8,14,25,.12)}
-.parity-chip{align-self:center;justify-self:center;font-size:10px;line-height:1;font-weight:800;color:#607391}
-.lane-current .parity-chip{color:#0ae29a}
-.parity-lane-items{display:flex;min-width:0;align-items:stretch}
+.parity-lane-items{display:flex;min-width:0;align-items:stretch;flex:1}
 .parity-lane .timetable-entry{grid-template-columns:minmax(50px,31%) minmax(0,1fr) minmax(37px,75px);padding:5px 5px 5px 1px;gap:4px;min-width:0}
 .parity-lane .timetable-entry:not(:last-child){border-right:1px dashed #3d4b63}
-.parity-empty{justify-self:center;align-self:center;font-size:12px;color:#4d5d77}
+.parity-empty{margin:auto;font-size:12px;color:#4d5d77}
 
 @media(max-width:800px){
   .timetable-row{grid-template-columns:29px minmax(0,1fr)}
   .pair-column strong{font-size:12px}
-  .parity-lane{grid-template-columns:11px minmax(0,1fr)}
-  .parity-chip{font-size:8px}
   .parity-lane .timetable-entry{grid-template-columns:minmax(0,1fr);grid-template-areas:'person' 'subject' 'room';align-content:center;gap:1px;padding:2px 1px;min-height:39px}
   .parity-lane .entry-person{font-size:7.8px}
   .parity-lane .entry-subject,.parity-lane .entry-room{font-size:7.2px;justify-self:start}
+
+  /* Three shared grid tracks force all six day cards to the same height. */
+  .timetable-board{grid-template-rows:repeat(3,1fr);grid-auto-flow:column;align-items:stretch}
+  .timetable-column{display:contents}
+  .timetable-day{display:flex;flex-direction:column;min-width:0}
+  .timetable-table{display:grid;grid-template-rows:repeat(4,1fr);flex:1;min-width:0}
+  .timetable-row{min-height:40px}
 }
 @media(max-width:390px){
   .timetable-row{grid-template-columns:26px minmax(0,1fr)}
   .pair-column strong{font-size:11px}
-  .parity-lane{grid-template-columns:10px minmax(0,1fr)}
-  .parity-chip{font-size:7px}
 }
 
 /* On narrow phones preserve readable subject and room labels: two compact
-   parity bands within the same numbered pair instead of four tiny columns. */
+   parity bands within the same numbered pair instead of tiny columns. */
 @media(max-width:620px){
-  .slot-parity-pair{grid-template-columns:minmax(0,1fr)}
-  .parity-lane{grid-template-columns:13px minmax(0,1fr);min-height:27px}
+  .slot-parity-pair{grid-template-columns:minmax(0,1fr);grid-template-rows:repeat(2,minmax(27px,1fr))}
+  .parity-lane{min-width:0;min-height:27px}
   .parity-lane:first-child{border-right:0;border-bottom:1px solid #36465f}
   .parity-lane .timetable-entry{min-height:27px;grid-template-columns:minmax(0,1fr) 35px;grid-template-areas:'person room' 'subject subject';gap:0;padding:2px 3px}
   .parity-lane .entry-person{font-size:8px}
