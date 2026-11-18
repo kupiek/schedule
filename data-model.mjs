@@ -96,6 +96,18 @@ export function buildWeekBoard(lessons, activeParity) {
   }));
 }
 
+// A pair is either common for both weeks or consists of independent
+// even/odd halves. Do not drop the empty half: it explains the week switch.
+export function splitPairVariants(entries) {
+  const common = [], even = [], odd = [];
+  for (const item of entries || []) {
+    if (item.typeWeek != null && Number(item.typeWeek) === 0) even.push(item);
+    else if (item.typeWeek != null && Number(item.typeWeek) === 1) odd.push(item);
+    else common.push(item);
+  }
+  return { common, even, odd, hasAlternatives: even.length > 0 || odd.length > 0 };
+}
+
 export function allRooms(data) {
   const found = new Set();
   for (const item of data?.groupLessons || []) {

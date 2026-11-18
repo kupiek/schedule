@@ -192,3 +192,52 @@ h1,h2,h3,p{margin:0}h1{font-weight:780;font-size:clamp(27px,4vw,39px);line-heigh
   .timetable-entry,.timetable-cell.is-divided .timetable-entry{min-height:41px}
   .entry-person{font-size:8px}.entry-subject{font-size:7.5px}.entry-room{font-size:7.5px}
 }
+
+/* Pair numbers only; parity-dependent lessons occupy labeled half-cells. */
+.timetable-row{grid-template-columns:49px minmax(0,1fr)}
+.pair-column strong{font-size:15px;color:#7185a8}
+.timetable-row.has-current .pair-column strong{color:#0de6a1}
+.slot-common{display:flex;flex:1;min-width:0;align-items:stretch}
+.slot-common>.timetable-entry:not(:last-child){border-right:1px solid #31405b}
+.slot-parity-wrapper{display:flex;flex-direction:column;width:100%;min-width:0}
+.slot-always{border-bottom:1px solid #31405b}
+.slot-parity-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));min-width:0;flex:1}
+.parity-lane{display:grid;grid-template-columns:18px minmax(0,1fr);min-width:0;align-items:stretch;position:relative}
+.parity-lane:first-child{border-right:1px solid #36465f}
+.parity-lane.lane-current{background:rgba(74,125,117,.045)}
+.parity-lane.lane-other{background:rgba(8,14,25,.12)}
+.parity-chip{align-self:center;justify-self:center;font-size:10px;line-height:1;font-weight:800;color:#607391}
+.lane-current .parity-chip{color:#0ae29a}
+.parity-lane-items{display:flex;min-width:0;align-items:stretch}
+.parity-lane .timetable-entry{grid-template-columns:minmax(50px,31%) minmax(0,1fr) minmax(37px,75px);padding:5px 5px 5px 1px;gap:4px;min-width:0}
+.parity-lane .timetable-entry:not(:last-child){border-right:1px dashed #3d4b63}
+.parity-empty{justify-self:center;align-self:center;font-size:12px;color:#4d5d77}
+
+@media(max-width:800px){
+  .timetable-row{grid-template-columns:29px minmax(0,1fr)}
+  .pair-column strong{font-size:12px}
+  .parity-lane{grid-template-columns:11px minmax(0,1fr)}
+  .parity-chip{font-size:8px}
+  .parity-lane .timetable-entry{grid-template-columns:minmax(0,1fr);grid-template-areas:'person' 'subject' 'room';align-content:center;gap:1px;padding:2px 1px;min-height:39px}
+  .parity-lane .entry-person{font-size:7.8px}
+  .parity-lane .entry-subject,.parity-lane .entry-room{font-size:7.2px;justify-self:start}
+}
+@media(max-width:390px){
+  .timetable-row{grid-template-columns:26px minmax(0,1fr)}
+  .pair-column strong{font-size:11px}
+  .parity-lane{grid-template-columns:10px minmax(0,1fr)}
+  .parity-chip{font-size:7px}
+}
+
+/* On narrow phones preserve readable subject and room labels: two compact
+   parity bands within the same numbered pair instead of four tiny columns. */
+@media(max-width:620px){
+  .slot-parity-pair{grid-template-columns:minmax(0,1fr)}
+  .parity-lane{grid-template-columns:13px minmax(0,1fr);min-height:27px}
+  .parity-lane:first-child{border-right:0;border-bottom:1px solid #36465f}
+  .parity-lane .timetable-entry{min-height:27px;grid-template-columns:minmax(0,1fr) 35px;grid-template-areas:'person room' 'subject subject';gap:0;padding:2px 3px}
+  .parity-lane .entry-person{font-size:8px}
+  .parity-lane .entry-subject{font-size:7px}
+  .parity-lane .entry-room{font-size:7px;justify-self:end}
+  .parity-empty{font-size:10px}
+}

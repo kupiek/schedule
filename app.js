@@ -2,7 +2,7 @@ import {
   DAYS, DEFAULT_TEACHER_ID, normalizeRoom, splitRooms, normalizeName,
   teacherDisplayName, groupName, iekDateParts, currentParity, scheduleForWeek,
   allRooms, roomLessons, availableRooms, teacherSchedule, groupSchedule, groupDictionary,
-  buildWeekBoard
+  buildWeekBoard, splitPairVariants
 } from './data-model.mjs';
 
 const app = document.querySelector('#app');
@@ -15,6 +15,9 @@ const state = {
   teacherId: readSavedTeacher(), installEvent: null
 };
 let toastTimeout;
+const REFRESH_EVERY_MS = 15 * 60 * 1000;
+let fetchInProgress = false;
+let lastFetchAttempt = 0;
 
 const icons = {
   arrow: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9 18 6-6-6-6"/></svg>',
@@ -72,7 +75,10 @@ function updateStatus(error = '') {
   statusBar.querySelector('span:last-child').textContent = `${outdated ? 'Архивные данные' : 'Обновлено'}: ${stamp(data.generatedAt)} · Иркутск${incomplete ? ' · есть пропуски' : ''}`;
 }
 
-async function loadData(silent = false) {
+async function loadData(silent = false, notify = silent) {
+  if (fetchInProgress) return;
+  fetchInProgress = true;
+  lastFetchAttempt = Date.now();
   if (!silent) statusBar.querySelector('span:last-child').textContent = 'Загружаем расписание…';
   try {
     const response = await fetch('./data/schedule.json', { cache: 'no-store' });
@@ -85,11 +91,19 @@ async function loadData(silent = false) {
     state.data = data;
     updateStatus();
     render();
-    if (silent) showToast(previousTimestamp === data.generatedAt ? 'Новых данных пока нет' : 'Расписание обновлено');
+    if (notify) showToast(previousTimestamp === data.generatedAt ? 'Новых данных пока нет' : 'Расписание обновлено');
   } catch (error) {
     updateStatus(error.message);
     if (!state.data) app.innerHTML = `<section class="empty-state panel">${icons.empty}<strong>Не удалось загрузить расписание</strong><p>Проверьте подключение к интернету или попробуйте позже. Для работы без сети сначала откройте приложение с интернетом.</p><button class="primary-button" data-action="reload">Повторить</button></section>`;
-    else if (silent) showToast('Не удалось обновить. Показана сохранённая версия.');
+    else if (notify) showToast('Не удалось обновить. Показана сохранённая версия.');
+  } finally {
+    fetchInProgress = false;
+  }
+}
+
+function refreshIfDue() {
+  if (!document.hidden && state.data && Date.now() - lastFetchAttempt >= REFRESH_EVERY_MS) {
+    loadData(true, false);
   }
 }
 
@@ -128,22 +142,13 @@ function lessonCard(item, context) {
     </div></article>`;
 }
 
-const PAIR_TIMES = [
-  ['08:30–10:00','10:20–11:50','12:30–14:00','14:10–15:40'],
-  ['08:30–10:00','10:20–11:50','12:30–14:00','14:10–15:40'],
-  ['08:30–10:00','10:20–11:50','12:30–14:00','14:10–15:40'],
-  ['08:30–10:00','10:20–11:50','12:30–14:00','14:10–15:40'],
-  ['08:30–10:00','10:20–11:50','12:30–14:00','14:10–15:40'],
-  ['08:30–10:00','10:10–11:40','12:10–13:40','13:50–15:20']
-];
-
 function dateForWeekDay(day) {
   const current = iekDateParts();
   const date = new Date(Date.UTC(current.year, current.month - 1, current.day + day - current.weekday));
   return new Intl.DateTimeFormat('ru-RU',{timeZone:'UTC',day:'numeric',month:'short',year:'2-digit'}).format(date);
 }
 
-function timetableEntry(item, context, split, day, pair) {
+function timetableEntry(item, context, day, pair) {
   const label = context === 'group' ? item.teacher || 'Преподаватель не указан' : groupTitle(item.groupId);
   const subject = item.subject || item.edit?.subject || 'Занятие';
   const room = splitRooms(item.room).join(' / ') || '—';
@@ -154,8 +159,22 @@ function timetableEntry(item, context, split, day, pair) {
       <span class="entry-person">${esc(label)}</span>
       <span class="entry-subject">${esc(subject)}</span>
       <span class="entry-room">${item.edit?.room && normalizeRoom(item.edit.room) !== normalizeRoom(item.room) ? '<span class="room-change" title="В API есть запись об изменении аудитории">✦</span>' : ''}${esc(room)}</span>
-      ${tag ? `<span class="entry-week-tag ${split ? 'is-split' : ''}">${tag}</span>` : ''}
     </button>`;
+}
+
+function timetableSlot(entries, context, day, pair) {
+  if (!entries.length) return '<span class="slot-blank" aria-label="Нет занятий"></span>';
+  const {common,even,odd,hasAlternatives} = splitPairVariants(entries);
+  const itemHtml = items => items.map(item => timetableEntry(item,context,day,pair)).join('');
+  if (!hasAlternatives) return `<div class="slot-common">${itemHtml(common)}</div>`;
+  const lane = (items,type,label) => `<div class="parity-lane ${items.some(item => item.active) ? 'lane-current' : 'lane-other'}" aria-label="${type}">
+    <span class="parity-chip">${label}</span>
+    ${items.length ? `<div class="parity-lane-items">${itemHtml(items)}</div>` : '<span class="parity-empty" aria-label="Нет занятия">—</span>'}
+  </div>`;
+  return `<div class="slot-parity-wrapper">
+    ${common.length ? `<div class="slot-common slot-always">${itemHtml(common)}</div>` : ''}
+    <div class="slot-parity-pair">${lane(even,'Чётная неделя','Ч')}${lane(odd,'Нечётная неделя','Н')}</div>
+  </div>`;
 }
 
 function schedulePanels(lessons, context) {
@@ -166,11 +185,10 @@ function schedulePanels(lessons, context) {
   const renderDay = ({day,rows,extra}) => `<section class="timetable-day ${day === today ? 'timetable-today' : ''}" id="day-${day}">
     <div class="timetable-day-heading"><span class="timetable-dot"></span><h3>${DAYS[day-1]}</h3><span class="timetable-date">${esc(dateForWeekDay(day))}</span>${day === today ? '<span class="timetable-today-label">Сегодня</span>' : ''}</div>
     <div class="timetable-table">${rows.map(({pair,entries}) => {
-      const split = entries.length > 1;
       return `<div class="timetable-row ${entries.some(item => item.active) ? 'has-current' : ''}">
-        <div class="pair-column"><strong>${pair} пара</strong><span>${PAIR_TIMES[day-1][pair-1]}</span></div>
-        <div class="timetable-cell ${split ? 'is-divided' : ''}">
-          ${entries.length ? entries.map(item => timetableEntry(item,context,split,day,pair)).join('') : '<span class="slot-blank" aria-label="Нет занятий"></span>'}
+        <div class="pair-column"><strong>${pair}</strong></div>
+        <div class="timetable-cell">
+          ${timetableSlot(entries,context,day,pair)}
         </div></div>`;
     }).join('')}</div>
     ${extra.length ? `<div class="extra-note">В расписании также есть ${extra.length} ${pairWord(extra.length)} после 4-й пары. Они доступны в исходных данных, но не входят в сетку из четырёх строк.</div>` : ''}
@@ -201,7 +219,7 @@ function renderMine() {
     <div class="current-week"><span class="week-indicator"></span>${esc(currentLabel())}</div>
   </section>
   ${schedulePanels(lessons,'teacher')}
-  <p class="board-footnote">Занятия другой чётности показаны приглушённым цветом. Нажмите на занятие, чтобы увидеть полные сведения. Время пар задано по референсу и не поступает из API.</p>`;
+  <p class="board-footnote">Ч — чётная неделя, Н — нечётная. Вариант другой недели приглушён. Нажмите на занятие, чтобы увидеть полные сведения.</p>`;
 }
 
 const CATEGORY_ITEMS = [
@@ -399,8 +417,9 @@ window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();sta
 window.addEventListener('appinstalled',()=>{state.installEvent=null;showToast('Приложение установлено');if(state.view==='settings')render();});
 window.addEventListener('online',()=>{if(state.data)loadData(true);});
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && state.data) { updateStatus(); render(); }
+  if (!document.hidden && state.data) { updateStatus(); render(); refreshIfDue(); }
 });
+setInterval(refreshIfDue, 60 * 1000);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
 state.freeDay = iekDateParts().weekday === 7 ? 1 : iekDateParts().weekday;
 loadData();

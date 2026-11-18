@@ -1,4 +1,4 @@
-const VERSION = 'iek-shell-v2';
+const VERSION = 'iek-shell-v3';
 const DATA_CACHE = 'iek-data-v1';
 const APP_ASSETS = [
   './', './index.html', './styles.css', './app.js', './data-model.mjs',
