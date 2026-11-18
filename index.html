@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1120">
+  <meta name="description" content="Расписание Иркутского энергетического колледжа: преподаватели, группы и кабинеты.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Расписание ИЭК">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="./assets/icon.svg">
+  <link rel="apple-touch-icon" href="./assets/icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
+  <title>Расписание · ИЭК</title>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 28 28" fill="none"><rect x="3" y="4" width="22" height="21" rx="6" stroke="currentColor" stroke-width="2"/><path d="M9 2.8v5M19 2.8v5M3 11h22M8 16h5v5H8z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+        <div><strong>РАСПИСАНИЕ</strong><span>Иркутский энергетический колледж</span></div>
+      </div>
+      <button class="icon-button" id="reload-button" type="button" aria-label="Обновить данные" title="Обновить данные"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.5 9a7 7 0 0 1 12-2L20 12M4 12l2.5 5a7 7 0 0 0 12-2"/></svg></button>
+    </header>
+
+    <div id="app-status" class="statusbar" role="status"><span class="status-dot"></span><span>Загружаем расписание…</span></div>
+
+    <main id="app" tabindex="-1" aria-live="polite">
+      <section class="loading-page"><div class="spinner"></div><p>Получаем расписание…</p></section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="Основная навигация">
+      <button class="nav-item active" id="nav-mine" data-view="mine" type="button" aria-current="page">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3.5" y="5" width="17" height="16" rx="3"/><path d="M7.5 3v4M16.5 3v4M3.5 10h17M8 14h3M8 17.5h7"/></svg><span>Моё</span>
+      </button>
+      <button class="nav-item" id="nav-directory" data-view="directory" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg><span>Обзор</span>
+      </button>
+      <button class="nav-item" id="nav-settings" data-view="settings" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2.5" fill="#0b1120"/><circle cx="15" cy="17" r="2.5" fill="#0b1120"/></svg><span>Настройки</span>
+      </button>
+    </nav>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
